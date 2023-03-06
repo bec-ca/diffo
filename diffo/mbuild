@@ -1,0 +1,36 @@
+cpp_library:
+  name: diff
+  sources: diff.cpp
+  headers: diff.hpp
+  libs:
+    /bee/error
+    /bee/file_reader
+    /bee/format
+    /bee/format_vector
+    /bee/string_util
+    /bee/util
+
+cpp_test:
+  name: diff_test
+  sources: diff_test.cpp
+  libs:
+    /bee/string_util
+    /bee/testing
+    /bee/util
+    diff
+  output: diff_test.out
+
+cpp_binary:
+  name: diffo
+  libs: diffo_main
+
+cpp_library:
+  name: diffo_main
+  sources: diffo_main.cpp
+  libs:
+    /bee/string_util
+    /bee/util
+    /command/command_builder
+    /command/group_builder
+    diff
+

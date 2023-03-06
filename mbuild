@@ -1,0 +1,36 @@
+profile:
+  name: dev
+  cpp_flags:
+    -ggdb3
+    -Og
+    -std=c++20
+    -Wall
+    -Wextra
+    -D_GLIBCXX_DEBUG
+    -fsanitize=address
+  ld_flags:
+    -pthread
+    -lpthread
+
+profile:
+  name: release
+  cpp_flags:
+    -std=c++20
+    -Wall
+    -Wextra
+    -O3
+    -march=native
+    -fomit-frame-pointer
+    -flto
+  ld_flags:
+    -pthread
+    -lpthread
+
+external_package:
+  name: bee
+  url: https://github.com/bec-ca/bee/archive/refs/tags/v1.0.0.tar.gz
+
+external_package:
+  name: command
+  url: https://github.com/bec-ca/command/archive/refs/tags/v1.0.0.tar.gz
+
