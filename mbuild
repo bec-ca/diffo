@@ -28,9 +28,9 @@ profile:
 
 external_package:
   name: bee
-  url: https://github.com/bec-ca/bee/archive/refs/tags/v1.0.0.tar.gz
+  url: https://github.com/bec-ca/bee/archive/refs/tags/v1.1.0.tar.gz
 
 external_package:
   name: command
-  url: https://github.com/bec-ca/command/archive/refs/tags/v1.0.0.tar.gz
+  url: https://github.com/bec-ca/command/archive/refs/tags/v1.0.1.tar.gz
 

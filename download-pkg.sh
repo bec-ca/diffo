@@ -3,15 +3,17 @@
 pkg_name=$1
 url=$2
 
+echo "Downloading $pkg_name..."
+
 repo_dir=$PWD
 
 pkgs=$repo_dir/build/external-packages
 mkdir -p $pkgs
 
 tmp_dir=$(mktemp -d)
-pushd $tmp_dir
+cd $tmp_dir
 
-curl -L -o $pkg_name.tar.gz $url
+curl -L -s --show-error -o $pkg_name.tar.gz $url
 tar -xf $pkg_name.tar.gz
 
 rm -rf $pkgs/$pkg_name
