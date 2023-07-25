@@ -5,7 +5,6 @@
 #include "command/command_builder.hpp"
 #include "command/group_builder.hpp"
 
-using bee::print_line;
 using command::Cmd;
 using command::CommandBuilder;
 using command::GroupBuilder;
@@ -61,10 +60,10 @@ void print_chunks_interleaved(const vector<Chunk>& chunks)
 {
   string sep(80, '=');
   for (const auto& chunk : chunks) {
-    print_line(sep);
-    print_line("$:", chunk.lines.at(0).line_number);
+    P(sep);
+    P("$:", chunk.lines.at(0).line_number);
     for (const auto& line : chunk.lines) {
-      print_line("$ $", diffo::Diff::action_prefix(line.action), line.line);
+      P("$ $", diffo::Diff::action_prefix(line.action), line.line);
     }
   }
 }
@@ -97,6 +96,7 @@ string action_color(Action action)
   case Action::Undefined:
     assert(false);
   }
+  assert(false);
 }
 
 void print_chunks_sxs(const vector<Chunk>& chunks)
@@ -141,8 +141,8 @@ void print_chunks_sxs(const vector<Chunk>& chunks)
 
   string sep(column_width * 2 + 1, '=');
   for (const auto& chunk : chunks) {
-    print_line(sep);
-    print_line("$:", chunk.lines.at(0).line_number);
+    P(sep);
+    P("$:", chunk.lines.at(0).line_number);
     vector<string> left_lines;
     vector<string> right_lines;
     for (const auto& line : chunk.lines) {
@@ -166,12 +166,12 @@ void print_chunks_sxs(const vector<Chunk>& chunks)
     equalize(left_lines, right_lines);
     assert(left_lines.size() == right_lines.size());
     for (ssize_t i = 0; i < std::ssize(right_lines); i++) {
-      print_line("$|$", left_lines.at(i), right_lines.at(i));
+      P("$|$", left_lines.at(i), right_lines.at(i));
     }
   }
 }
 
-bee::OrError<bee::Unit> run_diff(
+bee::OrError<> run_diff(
   const string& left_file, const string& right_file, bool interleaved)
 {
   bail(d, diffo::Diff::diff_files(left_file, right_file));
@@ -181,7 +181,7 @@ bee::OrError<bee::Unit> run_diff(
   } else {
     print_chunks_sxs(chunkify(d));
   }
-  return bee::unit;
+  return bee::ok();
 }
 
 Cmd diff_command()

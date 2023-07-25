@@ -70,16 +70,19 @@ ForEachMacros:
   - foreach
   - Q_FOREACH
   - BOOST_FOREACH
-IncludeBlocks:   Preserve
+IncludeBlocks:   Regroup
 IncludeCategories:
-  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
+  - Regex:           '^<[[:alnum:]_]*>$'
+    Priority:        1
+    SortPriority:    0
+  - Regex:           '^<[[:alnum:]_/\.]*>$'
     Priority:        2
     SortPriority:    0
-  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
-    Priority:        3
+  - Regex:           '^"[^/]*"'
+    Priority:        100 
     SortPriority:    0
   - Regex:           '.*'
-    Priority:        1
+    Priority:        200
     SortPriority:    0
 IncludeIsMainRegex: '(Test)?$'
 IncludeIsMainSourceRegex: ''
@@ -113,6 +116,7 @@ PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 600
 PointerAlignment: Left
 ReflowComments:  true
+RequiresExpressionIndentation: OuterScope
 SortIncludes:    true
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: false

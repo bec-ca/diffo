@@ -1,10 +1,9 @@
+#include "diff.hpp"
+
 #include "bee/string_util.hpp"
 #include "bee/testing.hpp"
 #include "bee/util.hpp"
-#include "diff.hpp"
 
-using bee::format;
-using bee::print_line;
 using std::string;
 using std::vector;
 
@@ -14,13 +13,12 @@ namespace {
 void print_diff(const vector<DiffLine>& diff)
 {
   if (diff.empty()) {
-    print_line("No diff");
+    P("No diff");
     return;
   }
   for (const auto& line : diff) {
     if (line.action == Action::Equal) { continue; }
-    print_line(
-      "$:$ $", line.line_number, Diff::action_prefix(line.action), line.line);
+    P("$:$ $", line.line_number, Diff::action_prefix(line.action), line.line);
   }
 }
 
@@ -78,7 +76,7 @@ TEST(equal)
 TEST(giant)
 {
   vector<string> doc1;
-  for (int i = 0; i < 20000; i++) { doc1.push_back(format(i)); }
+  for (int i = 0; i < 20000; i++) { doc1.push_back(F(i)); }
   vector<string> doc2;
   bee::concat_many(doc2, "bye", "bye", "bye", doc1, "EOF", "EOF", "EOF");
 

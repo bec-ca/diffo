@@ -1,9 +1,10 @@
 #pragma once
 
-#include "bee/error.hpp"
-
+#include <cstdint>
 #include <string>
 #include <vector>
+
+#include "bee/error.hpp"
 
 namespace diffo {
 

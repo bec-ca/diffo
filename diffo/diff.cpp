@@ -1,12 +1,5 @@
 #include "diff.hpp"
 
-#include "bee/error.hpp"
-#include "bee/file_reader.hpp"
-#include "bee/format.hpp"
-#include "bee/format_vector.hpp"
-#include "bee/string_util.hpp"
-#include "bee/util.hpp"
-
 #include <algorithm>
 #include <deque>
 #include <limits>
@@ -14,6 +7,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include "bee/error.hpp"
+#include "bee/file_reader.hpp"
+#include "bee/format.hpp"
+#include "bee/format_vector.hpp"
+#include "bee/string_util.hpp"
+#include "bee/util.hpp"
 
 using bee::FilePath;
 using std::deque;
@@ -103,6 +103,7 @@ struct NodeKey {
     case Action::Undefined:
       assert(false);
     }
+    assert(false);
   }
 
   NodeKey backout(Action action) const
@@ -117,6 +118,7 @@ struct NodeKey {
     case Action::Undefined:
       assert(false);
     }
+    assert(false);
   }
 
   ssize_t left;
@@ -266,7 +268,7 @@ vector<DiffLine> slow_diff(
   auto min_path = find_best_diff(doc_left, doc_right);
 
   for (auto& step : min_path) {
-    ssize_t line_number;
+    ssize_t line_number = 0;
     optional<string> line;
     Action action = step.action;
     NodeKey key = step.key;
@@ -307,6 +309,7 @@ string Diff::action_prefix(Action action)
   case Action::Undefined:
     return "?";
   }
+  assert(false);
 }
 
 vector<DiffLine> Diff::diff_strings(
