@@ -1,9 +1,30 @@
 #!/bin/bash -eu
 
-./download-pkg.sh bee https://github.com/bec-ca/bee/archive/refs/tags/v2.2.1.tar.gz
-./download-pkg.sh command https://github.com/bec-ca/command/archive/refs/tags/v2.1.0.tar.gz
+export MELLOW=build/mellow.bootstrap
 
-for file in diffo/*.cpp; do
-  echo "Compiling $file..."
-  clang++ -c $(cat compile_flags.txt) $file
-done
+function build_bootstrap() {
+  echo "Downloading and compiling mellow..."
+  bootstrap_dir=.bootstrap
+  mellow_dir=$bootstrap_dir/mellow-with-deps
+
+  rm -rf $bootstrap_dir
+  mkdir $bootstrap_dir
+  pushd $bootstrap_dir
+  curl -s -L "https://github.com/bec-ca/mellow/releases/download/v0.0.3/mellow-with-deps-v0.0.3.tar.gz" -o mellow-with-deps.tar.gz
+  tar -xf mellow-with-deps.tar.gz
+  popd
+
+  pushd $mellow_dir
+  make -j $(nproc) -f Makefile.bootstrap
+  popd
+
+  mkdir -p build
+  cp $mellow_dir/build/bootstrap/mellow/mellow $MELLOW
+}
+
+if ! [ -f $MELLOW ]; then
+  build_bootstrap
+fi
+
+make fetch
+PROFILE=release make

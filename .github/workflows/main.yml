@@ -7,6 +7,20 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+            path: build
+            key: ${{ runner.os }}-build
+
+      - name: Install clang-format16
+        run: |
+            wget https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            sudo ./llvm.sh 16
+            sudo apt-get install clang-format-16
+
       - name: Run tests
         run: ./ci.sh
         shell: bash

@@ -1,4 +1,11 @@
-.PHONY: build
+MELLOW ?= mellow
+PROFILE ?= dev
+
+.PHONY: build fetch
 
 build:
-	mellow build
+	$(MELLOW) build --profile $(PROFILE)
+
+
+fetch:
+	$(MELLOW) fetch
