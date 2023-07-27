@@ -1,5 +1,6 @@
 #!/bin/bash -eu
 
+export CLANG_FORMAT=clang-format-16
 export MELLOW=build/mellow.bootstrap
 
 function build_bootstrap() {
