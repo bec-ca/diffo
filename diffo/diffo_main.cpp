@@ -1,60 +1,17 @@
 #include "diff.hpp"
 
+#include "bee/print.hpp"
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 #include "command/command_builder.hpp"
+#include "command/file_path.hpp"
 #include "command/group_builder.hpp"
 
-using command::Cmd;
-using command::CommandBuilder;
-using command::GroupBuilder;
 using std::string;
 using std::vector;
 
 namespace diffo {
 namespace {
-
-struct Chunk {
-  vector<DiffLine> lines;
-};
-
-vector<Chunk> chunkify(const vector<DiffLine>& diff)
-{
-  const ssize_t context = 5;
-  std::vector<Chunk> chunks;
-
-  bool in_chunk = false;
-  ssize_t first_non_equal = 0;
-  ssize_t last_non_equal;
-
-  auto make_chunk = [&]() {
-    ssize_t begin = std::max<ssize_t>(first_non_equal - context, 0);
-    ssize_t end = std::min<ssize_t>(last_non_equal + context, diff.size());
-    chunks.push_back({vector(diff.begin() + begin, diff.begin() + end)});
-  };
-
-  for (ssize_t i = 0; i <= std::ssize(diff); i++) {
-    auto action = diff[i].action;
-    if (!in_chunk) {
-      if (action != Action::Equal) {
-        first_non_equal = i;
-        last_non_equal = i;
-        in_chunk = true;
-      }
-    } else {
-      if (action != Action::Equal) {
-        last_non_equal = i;
-      } else if (i >= last_non_equal + context) {
-        make_chunk();
-        in_chunk = false;
-      }
-    }
-  }
-
-  if (in_chunk) { make_chunk(); }
-
-  return chunks;
-}
 
 void print_chunks_interleaved(const vector<Chunk>& chunks)
 {
@@ -101,7 +58,7 @@ string action_color(Action action)
 
 void print_chunks_sxs(const vector<Chunk>& chunks)
 {
-  const ssize_t column_width = 100;
+  const ssize_t column_width = 50;
 
   auto format_line = [&](Action action, string line) {
     string prefix = Diff::action_prefix(action);
@@ -172,32 +129,42 @@ void print_chunks_sxs(const vector<Chunk>& chunks)
 }
 
 bee::OrError<> run_diff(
-  const string& left_file, const string& right_file, bool interleaved)
+  const bee::FilePath& left_file,
+  const bee::FilePath& right_file,
+  bool interleaved,
+  const std::optional<ssize_t>& agg)
 {
-  bail(d, diffo::Diff::diff_files(left_file, right_file));
-  auto chunks = chunkify(d);
+  bail(chunks, diffo::Diff::diff_files(left_file, right_file, {.agg = agg}));
+  size_t diff_size = 0;
+  for (auto&& chunk : chunks) {
+    for (auto&& line : chunk.lines) {
+      if (line.action != Action::Equal) { diff_size++; }
+    }
+  }
+  if (diff_size > 0) { P("Diff size: {,}", diff_size); }
   if (interleaved) {
-    print_chunks_interleaved(chunkify(d));
+    print_chunks_interleaved(chunks);
   } else {
-    print_chunks_sxs(chunkify(d));
+    print_chunks_sxs(chunks);
   }
   return bee::ok();
 }
 
-Cmd diff_command()
+command::Cmd diff_command()
 {
-  using namespace command::flags;
+  using namespace command;
   auto builder = CommandBuilder("Print the diff of two files");
   auto interleaved = builder.no_arg("--interleaved");
-  auto left_file = builder.required_anon(string_flag, "left-file");
-  auto right_file = builder.required_anon(string_flag, "right-file");
+  auto left_file = builder.required_anon(flags::FilePath, "left-file");
+  auto right_file = builder.required_anon(flags::FilePath, "right-file");
+  auto agg = builder.optional_with_default("--agg", flags::Int, 1000);
   return builder.run(
-    [=]() { return run_diff(*left_file, *right_file, *interleaved); });
+    [=]() { return run_diff(*left_file, *right_file, *interleaved, *agg); });
 }
 
-Cmd command()
+command::Cmd command()
 {
-  return GroupBuilder("Mellow").cmd("diff", diff_command()).build();
+  return command::GroupBuilder("Mellow").cmd("diff", diff_command()).build();
 }
 
 } // namespace
