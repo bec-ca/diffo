@@ -4,7 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "bee/error.hpp"
+#include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
 
 namespace diffo {
 
@@ -16,19 +17,43 @@ enum class Action : uint8_t {
 };
 
 struct DiffLine {
+  template <class T>
+  DiffLine(T&& line, Action action, ssize_t line_number)
+      : line(std::forward<T>(line)), action(action), line_number(line_number)
+  {}
   std::string line;
   Action action;
   ssize_t line_number;
 };
 
+struct Chunk {
+  std::vector<DiffLine> lines;
+};
+
 struct Diff {
-  static std::string action_prefix(Action action);
+  struct Options {
+    bool treat_missing_files_as_empty = false;
+    int context_lines = 3;
+    std::optional<ssize_t> agg = std::nullopt;
+  };
 
-  static bee::OrError<std::vector<DiffLine>> diff_files(
-    const std::string& file_left, const std::string& file_right);
+  static constexpr Options DefaultOptions{
+    .treat_missing_files_as_empty = false,
+    .context_lines = 3,
+    .agg = std::nullopt,
+  };
 
-  static std::vector<DiffLine> diff_strings(
-    const std::string& doc_left, const std::string& doc_right);
+  static const char* action_prefix(Action action);
+
+  static std::vector<Chunk> diff_strings(
+    const std::string& doc_left,
+    const std::string& doc_right,
+    const Options& options = DefaultOptions);
+
+  static bee::OrError<std::vector<Chunk>> diff_files(
+    const bee::FilePath& file_left,
+    const bee::FilePath& file_right,
+    const Options& options = DefaultOptions);
 };
 
 } // namespace diffo

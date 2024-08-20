@@ -1,67 +1,116 @@
 #include "diff.hpp"
 
 #include <algorithm>
-#include <deque>
-#include <limits>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
-#include "bee/error.hpp"
 #include "bee/file_reader.hpp"
-#include "bee/format.hpp"
-#include "bee/format_vector.hpp"
+#include "bee/filesystem.hpp"
+#include "bee/or_error.hpp"
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 
-using bee::FilePath;
 using std::deque;
 using std::make_pair;
 using std::optional;
 using std::reverse;
 using std::string;
-using std::unordered_set;
 using std::vector;
 
 namespace diffo {
-
 namespace {
+
+struct StringView {
+ public:
+  StringView(const char* begin) : _begin(begin) {}
+
+  inline char operator[](ssize_t idx) const { return _begin[idx]; }
+
+  inline bool operator==(const StringView& other) const
+  {
+    for (ssize_t i = 0;; i++) {
+      if (_begin[i] != other._begin[i]) { return false; }
+      if (is_end(_begin[i])) { return true; }
+    }
+  }
+
+  inline operator std::string() const
+  {
+    for (const char* end = _begin;; end++) {
+      if (is_end(*end)) { return std::string(_begin, end); }
+    }
+  }
+
+  inline std::string to_string() const
+  {
+    for (const char* end = _begin;; end++) {
+      if (is_end(*end)) { return std::string(_begin, end); }
+    }
+  }
+
+ private:
+  static inline bool is_end(char c) { return c == '\n' || c == 0; }
+  const char* _begin;
+};
+
+struct DiffLineView {
+  DiffLineView(const StringView& line, Action action, ssize_t line_number)
+      : line(line), action(action), line_number(line_number)
+  {}
+  StringView line;
+  Action action;
+  ssize_t line_number;
+
+  DiffLine to_diff_line() const { return {line, action, line_number}; }
+};
+
+vector<StringView> split_lines(const std::string& str)
+{
+  std::vector<StringView> output;
+  size_t pos = 0;
+  while (pos < str.size()) {
+    output.emplace_back(&str[pos]);
+    pos = str.find('\n', pos);
+    if (pos == string::npos) { break; }
+    pos++;
+  }
+  return output;
+}
 
 template <class T> struct DenseMap {
  public:
-  DenseMap(T def = T()) : _def(def) {}
-  inline void set(ssize_t idx, const T& value)
-  {
-    _values[_maybe_resize(idx)] = value;
-  }
+  DenseMap() {}
 
-  inline T& get(ssize_t idx) { return _values[_maybe_resize(idx)]; }
+  inline T& get(ssize_t idx) { return _maybe_resize(idx); }
 
-  auto begin() const { return _values.begin(); }
-  auto end() const { return _values.end(); }
+  ssize_t size() const { return _neg.size() + _pos.size(); }
 
-  ssize_t size() const { return _values.size(); }
+  ssize_t begin_idx() const { return _idx_offset - _neg.size(); }
+  ssize_t end_idx() const { return _idx_offset + _pos.size(); }
 
  private:
-  ssize_t _maybe_resize(ssize_t idx)
+  T& _maybe_resize(ssize_t idx)
   {
-    if (_values.empty()) {
+    if (_pos.empty()) {
       _idx_offset = idx;
-      _values.push_back(_def);
-      return 0;
+      _pos.emplace_back();
+      return _pos.front();
     }
     idx -= _idx_offset;
-    while (idx < 0) {
-      _values.push_front(_def);
-      idx++;
-      _idx_offset--;
+    if (idx < 0) {
+      idx = -idx - 1;
+      if (idx >= std::ssize(_neg)) { _neg.resize(idx + 1); }
+      return _neg[idx];
+    } else {
+      if (idx >= std::ssize(_pos)) { _pos.resize(idx + 1); }
+      return _pos[idx];
     }
-    while (idx >= std::ssize(_values)) { _values.push_back(_def); }
-    return idx;
   }
 
-  deque<T> _values;
+  vector<T> _neg;
+  vector<T> _pos;
+
   ssize_t _idx_offset = 0;
   const T _def;
 };
@@ -125,18 +174,6 @@ struct NodeKey {
   ssize_t right;
 };
 
-vector<ssize_t> line_cost(const vector<string>& on, const vector<string>& other)
-{
-  unordered_set<string> exclude_set(other.begin(), other.end());
-  vector<ssize_t> output;
-  for (const auto& s : on) {
-    ssize_t cost = 1;
-    if (!exclude_set.contains(s)) { cost = 0; }
-    output.push_back(cost);
-  }
-  return output;
-}
-
 struct PathStep {
  public:
   Action action;
@@ -165,17 +202,14 @@ template <class T> struct BucketPriorityQueue {
   ssize_t _queue_head = 0;
 };
 
-struct StateTable {
-  StateTable(ssize_t max_key) : _state_table(max_key / 32 + 1) {}
+struct DenseActionMap {
+  DenseActionMap() {}
 
-  Action get(NodeKey key)
-  {
-    return _state_table.at(key.left / 32).get(key.right).get(key.left % 32);
-  }
+  Action get(size_t idx) { return _map.get(idx / 32).get(idx % 32); }
 
-  void set(NodeKey key, Action action)
+  void set(size_t idx, Action action)
   {
-    _state_table.at(key.left / 32).get(key.right).set(key.left % 32, action);
+    _map.get(idx / 32).set(idx % 32, action);
   }
 
  private:
@@ -191,19 +225,39 @@ struct StateTable {
     uint64_t _bucket = 0;
   };
 
-  vector<DenseMap<ActionBucket>> _state_table;
+  DenseMap<ActionBucket> _map;
 };
 
-vector<PathStep> find_best_diff(
-  const vector<string>& doc_left, const vector<string>& doc_right)
+struct StateTable {
+  StateTable() {}
+
+  Action get(NodeKey key)
+  {
+    ssize_t idx1 = key.right - key.left;
+    ssize_t idx2 = key.right;
+    return _state_table.get(idx1).get(idx2);
+  }
+
+  void set(NodeKey key, Action action)
+  {
+    ssize_t idx1 = key.right - key.left;
+    ssize_t idx2 = key.right;
+    _state_table.get(idx1).set(idx2, action);
+  }
+
+ private:
+  DenseMap<DenseActionMap> _state_table;
+};
+
+vector<Action> find_best_diff(
+  const vector<StringView>& doc_left,
+  const vector<StringView>& doc_right,
+  const std::optional<ssize_t>& agg)
 {
   ssize_t size_left = doc_left.size();
   ssize_t size_right = doc_right.size();
 
-  auto line_cost_left = line_cost(doc_left, doc_right);
-  auto line_cost_right = line_cost(doc_right, doc_left);
-
-  StateTable states(size_left);
+  StateTable states;
 
   BucketPriorityQueue<NodeKey> queue;
 
@@ -211,6 +265,8 @@ vector<PathStep> find_best_diff(
     return key.left < size_left && key.right < size_right &&
            doc_left.at(key.left) == doc_right.at(key.right);
   };
+  ssize_t furthest_key = 0;
+
   auto maybe_enqueue =
     [&](NodeKey key, const ssize_t dist, const Action action) {
       if (states.get(key) != Action::Undefined) return;
@@ -222,6 +278,13 @@ vector<PathStep> find_best_diff(
         states.set(key, Action::Equal);
       }
 
+      ssize_t key_dist = key.left + key.right;
+      if (key_dist > furthest_key) {
+        furthest_key = key_dist;
+      } else if (agg && furthest_key - key_dist > *agg) {
+        return;
+      }
+
       queue.push(dist, key);
     };
 
@@ -229,49 +292,66 @@ vector<PathStep> find_best_diff(
   const NodeKey goal_key(size_left, size_right);
   maybe_enqueue(origin_key, 0, Action::Undefined);
 
+  ssize_t final_edit_dist;
   while (true) {
     auto el = queue.pop();
     auto key = el.first;
     auto dist = el.second;
-    if (key == goal_key) { break; }
+    if (key == goal_key) {
+      final_edit_dist = dist;
+      break;
+    }
 
     auto take_action = [&](Action action, ssize_t dist) {
       auto neighbor_key = key.walk(action);
       return maybe_enqueue(neighbor_key, dist, action);
     };
 
-    if (key.left < size_left) {
-      take_action(Action::RemoveLeft, dist + line_cost_left[key.left]);
-    }
-    if (key.right < size_right) {
-      take_action(Action::AddRight, dist + line_cost_right[key.right]);
-    }
+    if (key.left < size_left) { take_action(Action::RemoveLeft, dist + 1); }
+    if (key.right < size_right) { take_action(Action::AddRight, dist + 1); }
   }
 
-  vector<PathStep> path;
+  vector<Action> path;
+  path.reserve(final_edit_dist + doc_left.size());
   NodeKey key = goal_key;
   while (key != origin_key) {
     auto action = states.get(key);
     key = key.backout(action);
-    path.push_back(PathStep{.action = action, .key = key});
+    path.push_back(action);
   }
   reverse(path.begin(), path.end());
 
   return path;
 }
 
-vector<DiffLine> slow_diff(
-  const vector<string>& doc_left, const vector<string>& doc_right)
+vector<Chunk> slow_diff(
+  const vector<StringView>& doc_left,
+  const vector<StringView>& doc_right,
+  const Diff::Options& options)
 {
-  vector<DiffLine> output;
+  auto min_path = find_best_diff(doc_left, doc_right, options.agg);
 
-  auto min_path = find_best_diff(doc_left, doc_right);
+  std::vector<Chunk> output;
+  NodeKey key(0, 0);
+  bool in_chunk = false;
+  int context_count = 0;
+  std::deque<DiffLineView> chunk_buffer;
 
-  for (auto& step : min_path) {
+  auto make_chunk = [&]() {
+    output.emplace_back();
+    auto& chunk = output.back();
+    chunk.lines.reserve(chunk_buffer.size());
+    for (auto& dlv : chunk_buffer) {
+      chunk.lines.emplace_back(dlv.line, dlv.action, dlv.line_number);
+    }
+    chunk_buffer.clear();
+    context_count = 0;
+    in_chunk = false;
+  };
+
+  for (auto action : min_path) {
     ssize_t line_number = 0;
-    optional<string> line;
-    Action action = step.action;
-    NodeKey key = step.key;
+    optional<StringView> line;
     switch (action) {
     case Action::Equal:
       line_number = key.left + 1;
@@ -282,22 +362,50 @@ vector<DiffLine> slow_diff(
       line = doc_left[key.left];
       break;
     case Action::AddRight:
-      line_number = key.left;
+      line_number = key.left + 1;
       line = doc_right[key.right];
       break;
     case Action::Undefined:
       assert(false && "This shouldn't happen");
     };
-    output.push_back(DiffLine{
-      .line = std::move(*line), .action = action, .line_number = line_number});
+    key = key.walk(action);
+
+    if (
+      action == Action::Equal && in_chunk &&
+      context_count >= options.context_lines) {
+      make_chunk();
+    }
+
+    chunk_buffer.emplace_back(*line, action, line_number);
+    if (action != Action::Equal) {
+      in_chunk = true;
+      context_count = 0;
+    } else if (in_chunk) {
+      context_count++;
+    } else if (std::ssize(chunk_buffer) > options.context_lines) {
+      chunk_buffer.pop_front();
+    }
   }
+
+  if (in_chunk) { make_chunk(); }
 
   return output;
 }
 
+bee::OrError<std::string> read_file(
+  const bee::FilePath& file_path, bool treat_missing_files_as_empty)
+{
+  if (treat_missing_files_as_empty && !bee::FileSystem::exists(file_path)) {
+    return "";
+  }
+  bail(content, bee::FileReader::read_file(file_path));
+  if (content.empty() || content.back() != '\n') { content += '\n'; }
+  return std::move(content);
+}
+
 } // namespace
 
-string Diff::action_prefix(Action action)
+const char* Diff::action_prefix(Action action)
 {
   switch (action) {
   case Action::AddRight:
@@ -312,19 +420,23 @@ string Diff::action_prefix(Action action)
   assert(false);
 }
 
-vector<DiffLine> Diff::diff_strings(
-  const string& doc_left, const string& doc_right)
+vector<Chunk> Diff::diff_strings(
+  const string& doc_left, const string& doc_right, const Diff::Options& options)
 {
   if (doc_left == doc_right) { return {}; }
-  return slow_diff(bee::split(doc_left, "\n"), bee::split(doc_right, "\n"));
+  auto left = split_lines(doc_left);
+  auto right = split_lines(doc_right);
+  return slow_diff(left, right, options);
 }
 
-bee::OrError<vector<DiffLine>> Diff::diff_files(
-  const string& file1, const string& file2)
+bee::OrError<vector<Chunk>> Diff::diff_files(
+  const bee::FilePath& file1,
+  const bee::FilePath& file2,
+  const Options& options)
 {
-  bail(doc_left, bee::FileReader::read_file(FilePath::of_string(file1)));
-  bail(doc_right, bee::FileReader::read_file(FilePath::of_string(file2)));
-  return Diff::diff_strings(doc_left, doc_right);
+  bail(doc_left, read_file(file1, options.treat_missing_files_as_empty));
+  bail(doc_right, read_file(file2, options.treat_missing_files_as_empty));
+  return Diff::diff_strings(doc_left, doc_right, options);
 }
 
 } // namespace diffo

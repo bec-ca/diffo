@@ -3,10 +3,10 @@ cpp_library:
   sources: diff.cpp
   headers: diff.hpp
   libs:
-    /bee/error
+    /bee/file_path
     /bee/file_reader
-    /bee/format
-    /bee/format_vector
+    /bee/filesystem
+    /bee/or_error
     /bee/string_util
     /bee/util
 
@@ -28,9 +28,11 @@ cpp_library:
   name: diffo_main
   sources: diffo_main.cpp
   libs:
+    /bee/print
     /bee/string_util
     /bee/util
     /command/command_builder
+    /command/file_path
     /command/group_builder
     diff
 
