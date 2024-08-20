@@ -4,8 +4,6 @@ PROFILE ?= dev
 .PHONY: build fetch
 
 build:
-	$(MELLOW) build --profile $(PROFILE)
-
-
-fetch:
 	$(MELLOW) fetch
+	$(MELLOW) config
+	$(MELLOW) build --profile $(PROFILE)
